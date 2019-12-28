@@ -36,9 +36,9 @@ $ python selenium_demo.py
 
 ## TODO:
 
-- Click images using its pixel positions after finding objects and click VERIFY.
+- Click images using their pixel positions after finding objects and click VERIFY.
 - Using NLP to find relation between "find buses" -> "bus" etc.
-- Solve multiple screens such as "skip" or "until no objects left"
+- Solve multiple screens such as "skip" or "until no objects left".
 
 ## Credits:
 [YunYang1994](https://github.com/YunYang1994/TensorFlow2.0-Examples), [Igor Savinkin](https://stackoverflow.com/questions/32249190/improve-recaptcha-2-0-solving-automation-script-selenium/32415298), [Joseph Chet Redmon](https://pjreddie.com/darknet/yolo/)
