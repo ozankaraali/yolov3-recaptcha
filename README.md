@@ -22,15 +22,15 @@ $ python selenium_demo.py
 ```
 
 <p align="center">
-    <img width="100%" src="https://ozankaraali.com/images/yolo-example1.png" style="max-width:100%;">
+    <img width="50%" src="https://ozankaraali.com/images/yolo-example1.png" style="max-width:100%;">
     </a>
 </p>
 <p align="center">
-    <img width="100%" src="https://ozankaraali.com/images/yolo-example2.png" style="max-width:100%;">
+    <img width="50%" src="https://ozankaraali.com/images/yolo-example2.png" style="max-width:100%;">
     </a>
 </p>
 <p align="center">
-    <img width="100%" src="https://ozankaraali.com/images/yolo-example3.png" style="max-width:100%;">
+    <img width="50%" src="https://ozankaraali.com/images/yolo-example3.png" style="max-width:100%;">
     </a>
 </p>
 
