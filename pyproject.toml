@@ -1,0 +1,51 @@
+[project]
+name = "yolov3-recaptcha"
+version = "2.0.0"
+description = "Archived proof of concept: solving reCAPTCHA v2 image challenges with Ultralytics YOLO and Selenium."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Ozan Karaali" }]
+requires-python = ">=3.12"
+dependencies = [
+    "ultralytics>=8.4.202",
+    "selenium>=4.52.0",
+    "opencv-python-headless",
+    # Declared directly so the CPU-only wheel source below applies to them.
+    "torch>=2.15.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torchvision>=0.29.2; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # Intel Macs: PyTorch's last wheels for them are 2.2.2, built for Python <= 3.12 and NumPy 1.x.
+    "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchvision==0.17.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+# The CPU wheels keep the install around 1 GB smaller than the default CUDA build on Linux/Windows.
+# A small YOLO model on nine 100x100 tiles does not need a GPU.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv]
+# Ultralytics requires the GUI build of OpenCV, which links against X11 (libxcb). Nothing here opens
+# OpenCV windows, so swap in the headless build: it works on servers, containers and desktops alike.
+exclude-dependencies = ["opencv-python"]
+# Fail at lock time, not install time, if any of these platforms lacks a wheel.
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

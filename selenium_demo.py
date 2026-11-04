@@ -1,94 +1,183 @@
-from time import sleep
-from random import uniform
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support import expected_conditions as EC
+"""Live demo: solve the image challenge on Google's reCAPTCHA demo page with YOLO26 and Selenium.
 
-import PIL
+    uv run selenium_demo.py
+
+Needs Google Chrome; Selenium Manager downloads the matching ChromeDriver. Each screenshot the
+solver acts on is saved to out/ with the detections and the clicked tiles marked. See the README
+for why passing the puzzle is not the same as getting past reCAPTCHA.
+"""
+
+import sys
+import time
+from pathlib import Path
+
 import cv2
 import numpy as np
-import core.utils as utils
-import tensorflow as tf
-from core.yolov3 import YOLOv3, decode
-from PIL import Image
+from selenium import webdriver
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
 
+from detector import Rect, TileFinder, coco_class, draw
 
-def hover(element):
-    hov = ActionChains(driver).move_to_element(element)
-    hov.perform()
+DEMO_URL = "https://www.google.com/recaptcha/api2/demo"
+ANCHOR_FRAME = (By.CSS_SELECTOR, "iframe[src*='/recaptcha/api2/anchor']")
+CHALLENGE_FRAME = (By.CSS_SELECTOR, "iframe[src*='/recaptcha/api2/bframe']")
+GRID = (By.CSS_SELECTOR, "#rc-imageselect-target table")
+MAX_ROUNDS = 10
+MAX_REFILLS = 10  # replacement waves in one "click verify once there are none left" round
+OUT = Path("out")
 
-
-driver = webdriver.Chrome()
-driver.get("https://www.google.com/recaptcha/api2/demo")
-
-# Credit: https://stackoverflow.com/questions/32249190/improve-recaptcha-2-0-solving-automation-script-selenium/32415298
-
-recaptchaFrame = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'iframe')))
-frameName = recaptchaFrame.get_attribute('name')
-driver.switch_to.frame(frameName)
-CheckBox = WebDriverWait(driver, 10).until(
-    EC.presence_of_element_located((By.ID, "recaptcha-anchor"))
+# Errors that leave the same challenge on screen; reload instead of retrying it unchanged.
+RETRY_ERRORS = (
+    ".rc-imageselect-error-select-more",
+    ".rc-imageselect-error-dynamic-more",
+    ".rc-imageselect-error-select-something",
 )
 
-rand = uniform(1.0, 1.5)
-print('\n\r explicit wait for ', rand, ' seconds...')
-sleep(rand)
-hover(CheckBox)
 
-rand = uniform(0.5, 0.7)
-print('\n\r explicit wait for ', rand, 'seconds...')
-sleep(rand)
-clickReturn = CheckBox.click()
-print('\n\r after click on CheckBox... \n\r CheckBox click result: ', clickReturn)
+class Solver:
+    def __init__(self, driver: webdriver.Chrome, finder: TileFinder):
+        self.driver = driver
+        self.finder = finder
+        self.wait = WebDriverWait(driver, 15)
 
-driver.switch_to.parent_frame()
-recaptchaFrame = WebDriverWait(driver, 10).until(EC.presence_of_all_elements_located((By.TAG_NAME, 'iframe')))
-frameName = recaptchaFrame[1].get_attribute('name')
+    def enter(self, frame: tuple[str, str]) -> None:
+        self.driver.switch_to.default_content()
+        self.wait.until(EC.frame_to_be_available_and_switch_to_it(frame))
 
-rand = uniform(1, 3)
-print('\n\r explicit wait for ', rand, 'seconds...')
-sleep(rand)
+    def visible(self, css: str) -> bool:
+        return any(e.is_displayed() for e in self.driver.find_elements(By.CSS_SELECTOR, css))
 
-pngimg = recaptchaFrame[1].screenshot_as_png
-f = open('file.png', 'wb')
-f.write(pngimg)
-f.close()
+    def solved(self) -> bool:
+        self.enter(ANCHOR_FRAME)
+        return self.driver.find_element(By.ID, "recaptcha-anchor").get_attribute("aria-checked") == "true"
 
-# Credit: https://github.com/YunYang1994/TensorFlow2.0-Examples/tree/master/4-Object_Detection/YOLOV3
+    def run(self) -> bool:
+        self.driver.get(DEMO_URL)
+        self.enter(ANCHOR_FRAME)
+        self.wait.until(EC.element_to_be_clickable((By.ID, "recaptcha-anchor"))).click()
+        time.sleep(2)
 
-input_size = 416
-image_path = "file.png"
+        for round_no in range(1, MAX_ROUNDS + 1):
+            if self.solved():
+                print("The checkbox is ticked.")
+                return self.submit()
+            self.enter(CHALLENGE_FRAME)
+            if self.visible(".rc-doscaptcha-header"):
+                print("Blocked: reCAPTCHA says the computer or network may be sending automated queries.")
+                return False
+            try:
+                self.solve_round(round_no)
+            except TimeoutException:
+                if self.solved():
+                    continue
+                print("No image challenge appeared (audio-only or blocked?).")
+                return False
+            time.sleep(3)
+            self.enter(CHALLENGE_FRAME)
+            for css in RETRY_ERRORS:
+                if self.visible(css):
+                    print(f"  reCAPTCHA: {self.driver.find_element(By.CSS_SELECTOR, css).text!r}; reloading")
+                    self.driver.find_element(By.ID, "recaptcha-reload-button").click()
+                    time.sleep(2)
+                    break
 
-input_layer = tf.keras.layers.Input([input_size, input_size, 3])
-feature_maps = YOLOv3(input_layer)
+        print(f"Gave up after {MAX_ROUNDS} rounds.")
+        return False
 
-original_image = cv2.imread(image_path)
-original_image = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-original_image_size = original_image.shape[:2]
+    def tiles(self) -> tuple[WebElement, list[WebElement]]:
+        grid = self.wait.until(EC.visibility_of_element_located(GRID))
+        return grid, grid.find_elements(By.CSS_SELECTOR, "td.rc-imageselect-tile")
 
-image_data = utils.image_preporcess(np.copy(original_image), [input_size, input_size])
-image_data = image_data[np.newaxis, ...].astype(np.float32)
+    def snapshot(self) -> tuple[np.ndarray, list[Rect], list[WebElement]]:
+        """Screenshot the grid; return it with each tile's rectangle in screenshot pixels."""
+        grid, tiles = self.tiles()
+        canvas = cv2.imdecode(np.frombuffer(grid.screenshot_as_png, np.uint8), cv2.IMREAD_COLOR)
+        g = grid.rect
+        scale = canvas.shape[1] / g["width"]  # CSS pixels -> screenshot pixels (device pixel ratio)
+        rects = []
+        for tile in tiles:
+            t = tile.rect
+            x0, y0 = t["x"] - g["x"], t["y"] - g["y"]
+            rects.append(tuple(round(v * scale) for v in (x0, y0, x0 + t["width"], y0 + t["height"])))
+        return canvas, rects, tiles
 
-bbox_tensors = []
-for i, fm in enumerate(feature_maps):
-    bbox_tensor = decode(fm, i)
-    bbox_tensors.append(bbox_tensor)
+    def solve_round(self, round_no: int) -> None:
+        grid, _ = self.tiles()
+        time.sleep(1)  # tiles fade in
+        description = self.driver.find_element(By.CSS_SELECTOR, ".rc-imageselect-desc-wrapper")
+        prompt = description.find_element(By.TAG_NAME, "strong").text
+        refills = "none left" in description.text.lower()
+        # 3x3 grids show nine separate photos; 4x4 grids cut one photo into squares.
+        separate = "rc-imageselect-table-44" not in grid.get_attribute("class")
+        target = coco_class(prompt)
+        print(f"Round {round_no}: {prompt!r} ({'separate photos' if separate else 'one photo in squares'})")
+        if target is None:
+            print("  not a COCO class; asking for another challenge")
+            self.driver.find_element(By.ID, "recaptcha-reload-button").click()
+            return
 
-model = tf.keras.Model(input_layer, bbox_tensors)
-utils.load_weights(model, "./yolov3.weights")
-model.summary()
+        canvas, rects, tiles = self.snapshot()
+        picked, boxes = self.finder.pick(canvas, rects, target, separate)
+        self.save(f"round{round_no:02d}", canvas, rects, picked, boxes, target)
+        for wave in range(1, MAX_REFILLS + 1):
+            for i in picked:
+                tiles[i].click()
+                time.sleep(0.3)
+            if not (refills and picked):
+                break
+            # Clicked tiles fade out and get a new photo; check only those.
+            self.wait_for_refill(picked)
+            canvas, rects, tiles = self.snapshot()
+            picked, boxes = self.finder.pick(canvas, rects, target, True, only=picked)
+            self.save(f"round{round_no:02d}-refill{wave}", canvas, rects, picked, boxes, target)
 
-pred_bbox = model.predict(image_data)
-pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
-pred_bbox = tf.concat(pred_bbox, axis=0)
-bboxes = utils.postprocess_boxes(pred_bbox, original_image_size, input_size, 0.3)
-bboxes = utils.nms(bboxes, 0.45, method='nms')
+        verify = self.driver.find_element(By.ID, "recaptcha-verify-button")
+        print(f"  pressing {verify.text!r}")
+        verify.click()
 
-image = utils.draw_bbox(original_image, bboxes)
-image = Image.fromarray(image)
-image.show()
+    def wait_for_refill(self, indices: list[int]) -> None:
+        def refilled(_) -> bool:
+            _, tiles = self.tiles()
+            return not any("rc-imageselect-dynamic-selected" in tiles[i].get_attribute("class") for i in indices)
 
-driver.close()
+        try:
+            WebDriverWait(self.driver, 20, ignored_exceptions=[StaleElementReferenceException]).until(refilled)
+        except TimeoutException:
+            pass
+        time.sleep(1)  # new photos fade in
+
+    def save(self, name: str, canvas: np.ndarray, rects: list[Rect], picked: list[int], boxes, target: str) -> None:
+        OUT.mkdir(exist_ok=True)
+        path = OUT / f"{name}.png"
+        cv2.imwrite(str(path), draw(canvas, rects, picked, boxes, target))
+        print(f"  {target} in tiles {picked} -> {path}")
+
+    def submit(self) -> bool:
+        self.driver.switch_to.default_content()
+        self.driver.find_element(By.ID, "recaptcha-demo-submit").click()
+        try:
+            print(self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "recaptcha-success"))).text)
+            return True
+        except TimeoutException:
+            print("Submitted, but the demo page did not confirm success.")
+            return False
+
+
+def main() -> None:
+    finder = TileFinder()
+    driver = webdriver.Chrome()
+    try:
+        ok = Solver(driver, finder).run()
+        if sys.stdin.isatty():
+            input("Press Enter to close the browser...")
+    finally:
+        driver.quit()
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()

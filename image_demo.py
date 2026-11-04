@@ -1,53 +1,48 @@
-#! /usr/bin/env python
-# coding=utf-8
-#================================================================
-#   Copyright (C) 2019 * Ltd. All rights reserved.
-#
-#   Editor      : VIM
-#   File name   : image_demo.py
-#   Author      : YunYang1994
-#   Created date: 2019-07-12 13:07:27
-#   Description :
-#
-#================================================================
+"""Offline demo: mark the tiles to click on a saved screenshot of a 3x3 reCAPTCHA challenge.
+
+    uv run image_demo.py                       # the two bundled screenshots in docs/
+    uv run image_demo.py shot.png "traffic lights"
+
+Results are written to out/.
+"""
+
+import sys
+from pathlib import Path
 
 import cv2
-import numpy as np
-import core.utils as utils
-import tensorflow as tf
-from core.yolov3 import YOLOv3, decode
-from PIL import Image
 
-input_size   = 416
-image_path   = "./docs/find2.png"
+from detector import TileFinder, coco_class, draw, find_grid
 
-input_layer  = tf.keras.layers.Input([input_size, input_size, 3])
-feature_maps = YOLOv3(input_layer)
-
-original_image      = cv2.imread(image_path)
-original_image      = cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB)
-original_image_size = original_image.shape[:2]
-
-image_data = utils.image_preporcess(np.copy(original_image), [input_size, input_size])
-image_data = image_data[np.newaxis, ...].astype(np.float32)
-
-bbox_tensors = []
-for i, fm in enumerate(feature_maps):
-    bbox_tensor = decode(fm, i)
-    bbox_tensors.append(bbox_tensor)
-
-model = tf.keras.Model(input_layer, bbox_tensors)
-utils.load_weights(model, "./yolov3.weights")
-model.summary()
-
-pred_bbox = model.predict(image_data)
-pred_bbox = [tf.reshape(x, (-1, tf.shape(x)[-1])) for x in pred_bbox]
-pred_bbox = tf.concat(pred_bbox, axis=0)
-bboxes = utils.postprocess_boxes(pred_bbox, original_image_size, input_size, 0.3)
-bboxes = utils.nms(bboxes, 0.45, method='nms')
-
-image = utils.draw_bbox(original_image, bboxes)
-image = Image.fromarray(image)
-image.show()
+EXAMPLES = [("docs/find.png", "a fire hydrant"), ("docs/find2.png", "a bus")]
+OUT = Path("out")
 
 
+def main() -> None:
+    if len(sys.argv) == 3:
+        jobs = [(sys.argv[1], sys.argv[2])]
+    elif len(sys.argv) == 1:
+        jobs = EXAMPLES
+    else:
+        sys.exit(__doc__)
+
+    finder = TileFinder()
+    OUT.mkdir(exist_ok=True)
+    for path, prompt in jobs:
+        target = coco_class(prompt)
+        if target is None:
+            print(f"{path}: '{prompt}' is not a COCO class, skipping")
+            continue
+        image = cv2.imread(path)
+        if image is None:
+            sys.exit(f"{path}: cannot read image")
+        rects = find_grid(image)
+        if len(rects) != 9:
+            sys.exit(f"{path}: expected a 3x3 grid, found {len(rects)} tiles")
+        picked, boxes = finder.pick(image, rects, target, separate_images=True)
+        out = OUT / Path(path).name
+        cv2.imwrite(str(out), draw(image, rects, picked, boxes, target))
+        print(f"{path}: {target} in tiles {picked} (row by row, from 0) -> {out}")
+
+
+if __name__ == "__main__":
+    main()
