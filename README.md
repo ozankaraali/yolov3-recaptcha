@@ -53,8 +53,11 @@ loads the official YOLO26 weights and runs them on screenshots.
 
 ## Why it's still called yolov3-recaptcha
 
-The 2019 version was a TensorFlow 2.0 port of YOLOv3 with Darknet's 237 MB COCO weights. It found objects
-in a screenshot of the challenge but never clicked anything: clicking, prompt mapping and multi-round
+The first version was published in December 2019, nearly five years before the ETH Zürich study [2] used
+the same idea: YOLO object detection on reCAPTCHA v2 image challenges.
+
+That version was a TensorFlow 2.0 port of YOLOv3 with Darknet's 237 MB COCO weights. It found objects in
+a screenshot of the challenge but never clicked anything: clicking, prompt mapping and multi-round
 challenges were on its TODO list. Dependabot spent the next few years bumping TensorFlow, Pillow and
 protobuf around code that no longer ran on current Python.
 
