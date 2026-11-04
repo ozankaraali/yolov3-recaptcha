@@ -70,34 +70,36 @@ The final revision (2026) completes that TODO list instead of patching it:
 The repository keeps its name so existing links still work. The original code is tagged
 [`v1-tensorflow-yolov3`](https://github.com/ozankaraali/yolov3-recaptcha/tree/v1-tensorflow-yolov3).
 
-## Why this doesn't beat reCAPTCHA in 2026
+## Why passing the puzzle isn't beating reCAPTCHA (2026)
 
-Recognizing buses was never the hard part, and by now it is a solved problem. In 2023, Searles et al.
-found that published bots solve image CAPTCHAs faster and more accurately than the 1,400 people they
-tested [1]. In 2024, an ETH
-Zürich team solved 100% of reCAPTCHA v2 image challenges with a fine-tuned YOLOv8 [2]. The image puzzle
-is a speed bump. reCAPTCHA decides who gets through elsewhere:
+The final version works on Google's demo page. In a test run in November 2026, from a home network on a
+Mac, it passed after one round: it clicked three motorcycle tiles, and the demo form said
+"Verification Success... Hooray!".
+
+That doesn't make it a reCAPTCHA bypass, and it isn't news. In 2023, Searles et al. found that published
+bots solve image CAPTCHAs faster and more accurately than the 1,400 people they tested [1]. In 2024, an
+ETH Zürich team solved 100% of reCAPTCHA v2 image challenges with a fine-tuned YOLOv8 [2]. The image
+puzzle is a speed bump. reCAPTCHA decides who gets through elsewhere:
 
 - **The score comes first.** Before the checkbox is clicked, reCAPTCHA's obfuscated JavaScript has
   already profiled the browser. It looks at fingerprints (canvas, WebGL, fonts, audio, screen and
   hardware details), Google cookies and account history, IP reputation, and how the mouse and keyboard
-  were used. A trusted session gets the green tick without a puzzle. An untrusted one gets puzzles, and
-  the score decides how many.
-- **Correct answers aren't enough.** A low-scoring session can answer every round correctly and still get
-  another round, slower fading tiles, or "Try again later: your computer or network may be sending
-  automated queries". The ETH team found that bots and people needed about the same number of rounds,
-  and that reCAPTCHA v2 leans heavily on cookies and browser history to tell them apart [2].
-- **Automation is visible.** A Selenium-driven Chrome reports `navigator.webdriver = true`, as the
-  WebDriver standard requires. It also starts from a fresh profile with no history, which is exactly what
-  the risk engine looks for. This demo makes no attempt to hide either.
-- **Often there is no puzzle at all.** reCAPTCHA v3 and reCAPTCHA Enterprise score every request in the
-  background and leave the decision to the website. Cloudflare Turnstile and Private Access Tokens work
-  the same way. A detector has nothing to look at.
+  were used. A trusted session gets the tick without a puzzle. A doubtful one gets puzzles, and a
+  distrusted one gets round after round or "Try again later: your computer or network may be sending
+  automated queries", however well it answers.
+- **The test run was the easy case.** A residential IP on a real Mac scored well enough that one correct
+  round was accepted. That held even though Selenium-driven Chrome reports `navigator.webdriver = true`,
+  as the WebDriver standard requires. The ETH team saw the same thing: bots and people needed about the
+  same number of rounds, and reCAPTCHA v2 leans heavily on cookies and browser history to tell them
+  apart [2]. Expect the same script to get more rounds, then a block, from a datacenter IP or when run
+  repeatedly.
+- **The website has the last word.** Passing the widget only produces a token, which the site's server
+  checks with Google. reCAPTCHA v3 and Enterprise score every request in the background, usually with no
+  puzzle at all, and the site decides which scores it accepts. Cloudflare Turnstile and Private Access
+  Tokens work the same way. A detector has nothing to look at.
 
-Depending on your network and browser history, expect `selenium_demo.py` to end in one of three ways:
-round after round of challenges, a "try again later" block, or now and then a pass on the demo page.
-That is what the project now documents: object detection turned the image challenge into a formality,
-and CAPTCHAs moved on to judging the browser instead of the answer.
+So the project ends where the research did. Object detection turned the image challenge into a
+formality, and CAPTCHAs moved on to judging the session instead of the answer.
 
 ## Limitations
 

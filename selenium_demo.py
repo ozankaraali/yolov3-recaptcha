@@ -4,7 +4,7 @@
 
 Needs Google Chrome; Selenium Manager downloads the matching ChromeDriver. Each screenshot the
 solver acts on is saved to out/ with the detections and the clicked tiles marked. See the README
-for why this rarely gets through in 2026.
+for why passing the puzzle is not the same as getting past reCAPTCHA.
 """
 
 import sys
