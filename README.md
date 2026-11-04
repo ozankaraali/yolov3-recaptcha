@@ -37,7 +37,7 @@ You need [uv](https://docs.astral.sh/uv/) and, for the live demo, Google Chrome.
 matching ChromeDriver automatically.
 
 ```sh
-uv sync                    # Python 3.13, CPU-only PyTorch, Ultralytics, Selenium
+uv sync                    # Python 3.12, CPU-only PyTorch, Ultralytics, Selenium
 uv run image_demo.py       # offline: marks the tiles on the two screenshots in docs/, writes to out/
 uv run selenium_demo.py    # live: opens Chrome on Google's demo page and tries to solve it
 uv run pytest              # checks tile picking against the bundled screenshots
@@ -45,6 +45,11 @@ uv run pytest              # checks tile picking against the bundled screenshots
 
 `yolo26s.pt` (20 MB) downloads on first run. You can also run the offline demo on your own screenshot of
 a full 3x3 challenge: `uv run image_demo.py shot.png "traffic lights"`.
+
+The lockfile has wheels for Linux (x86_64, arm64), Windows (x64) and macOS. Apple Silicon needs macOS 14
+or later. Intel Macs get PyTorch 2.2.2 with NumPy 1.26, the last release PyTorch built for them. The tests
+pass on that combination, but it carries PyTorch advisories fixed only in later releases. Here it only
+loads the official YOLO26 weights and runs them on screenshots.
 
 ## Why it's still called yolov3-recaptcha
 
@@ -59,8 +64,8 @@ The final revision (2026) completes that TODO list instead of patching it:
   and there is no TensorFlow or manual weights download.
 - **Selenium 4** clicks tiles, follows refilling grids and presses Verify. Selenium Manager handles the
   driver.
-- **uv** with a lockfile replaces `requirements.txt`. All known vulnerabilities in the dependency tree
-  were fixed when it was archived.
+- **uv** with a lockfile replaces `requirements.txt`. When it was archived, the dependency tree had no
+  known vulnerabilities, except the PyTorch 2.2.2 that only Intel Macs install (see above).
 
 The repository keeps its name so existing links still work. The original code is tagged
 [`v1-tensorflow-yolov3`](https://github.com/ozankaraali/yolov3-recaptcha/tree/v1-tensorflow-yolov3).
